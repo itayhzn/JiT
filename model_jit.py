@@ -392,3 +392,15 @@ JiT_models = {
     'JiT-H/16': JiT_H_16,
     'JiT-H/32': JiT_H_32,
 }
+
+
+class SpectralJiT(JiT):
+    """
+    Spectral version of JiT.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # You might want to override specific things here if needed,
+        # but for now it just inherits JiT.
+        # The key difference is the input channels which is handled by the caller.
+

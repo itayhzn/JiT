@@ -29,6 +29,8 @@ def get_args_parser():
     parser.add_argument('--img_size', default=256, type=int, help='Image size')
     parser.add_argument('--attn_dropout', type=float, default=0.0, help='Attention dropout rate')
     parser.add_argument('--proj_dropout', type=float, default=0.0, help='Projection dropout rate')
+    parser.add_argument('--spectral', action='store_true', help='Enable spectral space diffusion')
+    parser.add_argument('--transform_type', default='dct', type=str, help='Spectral transform type (dct or dft)')
 
     # training
     parser.add_argument('--epochs', default=200, type=int)
@@ -191,6 +193,60 @@ def main(args):
     checkpoint_path = os.path.join(args.resume, "checkpoint-last.pth") if args.resume else None
     if checkpoint_path and os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        if 'args' in checkpoint:
+            # Auto-detect spectral args from checkpoint
+            ckpt_args = checkpoint['args']
+            if hasattr(ckpt_args, 'spectral') and ckpt_args.spectral:
+                print(f"Auto-detected spectral mode from checkpoint: spectral={ckpt_args.spectral}, transform={ckpt_args.transform_type}")
+                args.spectral = ckpt_args.spectral
+                args.transform_type = ckpt_args.transform_type
+                
+                # Re-initialize model with correct args if needed (e.g. if in_channels changed)
+                # But model is already initialized with 'args' passed to main.
+                # If args.spectral was False initially, model has in_channels=3.
+                # If checkpoint says spectral=True (and DFT), we need in_channels=6.
+                # So we must re-initialize the model if args changed!
+                
+                # Check if we need to re-init
+                need_reinit = False
+                if args.spectral and args.transform_type == 'dft':
+                     # We need 6 channels. If we initialized with 3, we must re-init.
+                     # But wait, we can't easily re-init DDP model here.
+                     # Actually, we should check checkpoint BEFORE initializing model?
+                     # But checkpoint path depends on args.resume.
+                     pass
+
+        # To handle the re-init issue properly:
+        # We should load checkpoint args BEFORE creating the model if possible.
+        # But standard pattern is create model -> load weights.
+        
+        # If we are resuming, we should trust the checkpoint args for architecture params.
+        # Let's see if we can move model creation after checkpoint loading?
+        # No, optimizer needs model params.
+        
+        # If we detect a mismatch, we can re-create the model.
+        # Since we are in main(), we can just re-instantiate.
+        
+        if 'args' in checkpoint:
+            ckpt_args = checkpoint['args']
+            spectral_changed = getattr(ckpt_args, 'spectral', False) != args.spectral
+            transform_changed = getattr(ckpt_args, 'transform_type', 'dct') != args.transform_type
+            
+            if spectral_changed or transform_changed:
+                print("Re-initializing model due to checkpoint args mismatch...")
+                args.spectral = getattr(ckpt_args, 'spectral', False)
+                args.transform_type = getattr(ckpt_args, 'transform_type', 'dct')
+                
+                # Re-create model
+                model = Denoiser(args)
+                model.to(device)
+                model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+                model_without_ddp = model.module
+                
+                # Re-create optimizer
+                param_groups = misc.add_weight_decay(model_without_ddp, args.weight_decay)
+                optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+
         model_without_ddp.load_state_dict(checkpoint['model'])
 
         ema_state_dict1 = checkpoint['model_ema1']

@@ -11,6 +11,7 @@ import util.misc as misc
 import util.lr_sched as lr_sched
 import torch_fidelity
 import copy
+from denoiser import spectral_transform, inverse_spectral_transform
 
 
 def train_one_epoch(model, model_without_ddp, data_loader, optimizer, device, epoch, log_writer=None, args=None):
@@ -33,6 +34,10 @@ def train_one_epoch(model, model_without_ddp, data_loader, optimizer, device, ep
         x = x.to(device, non_blocking=True).to(torch.float32).div_(255)
         x = x * 2.0 - 1.0
         labels = labels.to(device, non_blocking=True)
+        
+        # Apply spectral transform if enabled
+        if getattr(args, 'spectral', False):
+            x = spectral_transform(x, transform_type=getattr(args, 'transform_type', 'dct'))
 
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             loss = model(x, labels)
@@ -109,6 +114,10 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
 
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             sampled_images = model_without_ddp.generate(labels_gen)
+            
+        # Apply inverse spectral transform if enabled
+        if getattr(args, 'spectral', False):
+            sampled_images = inverse_spectral_transform(sampled_images, transform_type=getattr(args, 'transform_type', 'dct'))
 
         torch.distributed.barrier()
 

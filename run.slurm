@@ -53,12 +53,26 @@ conda run -n jit torchrun --nproc_per_node=1 --nnodes=1 --node_rank=0 \
  --model JiT-B/16 \
  --proj_dropout 0.0 \
  --P_mean -0.8 --P_std 0.8 \
- --img_size 64 --noise_scale 1.0 \
+ --img_size 256 --noise_scale 1.0 \
  --batch_size 128 --blr 5e-5 \
  --epochs 200 --warmup_epochs 5 \
  --gen_bsz 128 --num_images 50000 --cfg 2.9 --interval_min 0.1 --interval_max 1.0 \
  --output_dir ${OUTPUT_DIR} --resume ${OUTPUT_DIR} \
  --data_path ${IMAGENET_PATH} --online_eval 
+
+# Spectral JiT Example
+# conda run -n jit torchrun --nproc_per_node=1 --nnodes=1 --node_rank=0 \
+#  main_jit.py \
+#  --model JiT-B/16 \
+#  --spectral --transform_type dct \
+#  --proj_dropout 0.0 \
+#  --P_mean -0.8 --P_std 0.8 \
+#  --img_size 256 --noise_scale 1.0 \
+#  --batch_size 128 --blr 5e-5 \
+#  --epochs 200 --warmup_epochs 5 \
+#  --gen_bsz 128 --num_images 50000 --cfg 2.9 --interval_min 0.1 --interval_max 1.0 \
+#  --output_dir ${OUTPUT_DIR}_spectral --resume ${OUTPUT_DIR}_spectral \
+#  --data_path ${IMAGENET_PATH} --online_eval 
 
 # conda env remove -n jit
 # conda env create -f environment.yaml
